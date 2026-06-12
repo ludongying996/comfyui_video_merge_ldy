@@ -135,6 +135,30 @@ class PQTMixOralVideoMergeNode:
         target.mkdir(parents=True, exist_ok=True)
         return str(target)
 
+    @staticmethod
+    def _build_video_ui_result(video_path: str) -> dict | None:
+        if folder_paths is None:
+            return None
+
+        output_root = Path(folder_paths.get_output_directory()).resolve()
+        file_path = Path(video_path).resolve()
+        try:
+            relative_path = file_path.relative_to(output_root)
+        except ValueError:
+            return None
+
+        subfolder = str(relative_path.parent).replace("\\", "/")
+        if subfolder == ".":
+            subfolder = ""
+
+        return {
+            "filename": file_path.name,
+            "subfolder": subfolder,
+            "type": "output",
+            "format": file_path.suffix.lstrip(".").lower() or "mp4",
+            "fullpath": str(file_path),
+        }
+
 
 class PQTMixOralVideoMergeSaveNode:
     @classmethod
@@ -203,9 +227,20 @@ class PQTMixOralVideoMergeSaveNode:
             task_id=task_id,
         )
 
+        summary_json = json.dumps(result, ensure_ascii=False, indent=2)
+        preview = PQTMixOralVideoMergeNode._build_video_ui_result(result["video_path"])
+        if preview:
+            return {
+                "ui": {"gifs": [preview]},
+                "result": (
+                    result["video_path"],
+                    summary_json,
+                ),
+            }
+
         return (
             result["video_path"],
-            json.dumps(result, ensure_ascii=False, indent=2),
+            summary_json,
         )
 
 
