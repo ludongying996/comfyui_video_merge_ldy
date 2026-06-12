@@ -48,12 +48,13 @@ ffmpeg
 ffprobe
 ```
 
-## Node Name
+## Node Names
 
-The custom node will appear as:
+The custom nodes will appear as:
 
 ```text
 PingQutong/Video -> PQT Mix Oral Video Merge
+PingQutong/Video -> PQT Mix Oral Video Merge Save
 ```
 
 ## Main Inputs
@@ -116,6 +117,8 @@ Or JSON array:
 
 ## Output
 
+### `PQT Mix Oral Video Merge`
+
 The node returns:
 
 - `images`: ComfyUI `IMAGE` batch, ready for `Video Combine`
@@ -124,15 +127,26 @@ The node returns:
 - `video_path`: final MP4 path for debugging or direct file use
 - `summary_json`: JSON summary with resolution, segment count, elapsed time, and task metadata
 
+### `PQT Mix Oral Video Merge Save`
+
+This node does not export frames or audio tensors. It directly saves the rendered MP4
+into the output directory and returns:
+
+- `video_path`: final MP4 file path
+- `summary_json`: JSON summary with resolution, segment count, elapsed time, and task metadata
+
 ## Connect To Video Combine
 
-This node is now designed to feed a downstream `Video Combine` node:
+`PQT Mix Oral Video Merge` is designed to feed a downstream `Video Combine` node:
 
 - connect `images` -> `Video Combine.images`
 - connect `audio` -> `Video Combine.audio`
 - use `fps` as the frame rate reference when configuring `Video Combine`
 
 The node still saves the rendered MP4 so you can inspect the intermediate result if needed.
+
+If you do not want to go through `Video Combine`, use `PQT Mix Oral Video Merge Save`
+instead.
 
 ## Notes
 

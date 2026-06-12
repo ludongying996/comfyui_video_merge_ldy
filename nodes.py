@@ -136,10 +136,85 @@ class PQTMixOralVideoMergeNode:
         return str(target)
 
 
+class PQTMixOralVideoMergeSaveNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return PQTMixOralVideoMergeNode.INPUT_TYPES()
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("video_path", "summary_json")
+    FUNCTION = "run"
+    CATEGORY = "PingQutong/Video"
+    OUTPUT_NODE = True
+
+    def run(
+        self,
+        material_sources,
+        lip_video_source,
+        storyboard_json,
+        aspect_ratio,
+        output_width,
+        output_height,
+        ffmpeg_threads,
+        segment_preset,
+        segment_crf,
+        concat_preset,
+        concat_crf,
+        adjust_preset,
+        adjust_crf,
+        task_id,
+        output_filename,
+        keep_temp,
+        output_dir="",
+        tmp_dir="",
+        ffmpeg_path="",
+        ffprobe_path="",
+    ):
+        material_list = parse_material_sources(material_sources)
+        storyboards = parse_storyboards(storyboard_json)
+
+        width, height = PQTMixOralVideoMergeNode._resolve_resolution(aspect_ratio, output_width, output_height)
+        resolved_output_dir = PQTMixOralVideoMergeNode._resolve_output_dir(output_dir)
+
+        pipeline = FFmpegVideoMergePipeline(
+            MergeConfig(
+                output_width=width,
+                output_height=height,
+                threads=ffmpeg_threads,
+                segment_preset=segment_preset,
+                segment_crf=segment_crf,
+                concat_preset=concat_preset,
+                concat_crf=concat_crf,
+                adjust_preset=adjust_preset,
+                adjust_crf=adjust_crf,
+                tmp_root=tmp_dir.strip() or None,
+                keep_temp=keep_temp,
+                ffmpeg_path=ffmpeg_path.strip() or None,
+                ffprobe_path=ffprobe_path.strip() or None,
+            )
+        )
+
+        result = pipeline.run_mix_oral(
+            material_sources=material_list,
+            lip_video_source=lip_video_source,
+            storyboards=storyboards,
+            output_dir=resolved_output_dir,
+            output_filename=output_filename,
+            task_id=task_id,
+        )
+
+        return (
+            result["video_path"],
+            json.dumps(result, ensure_ascii=False, indent=2),
+        )
+
+
 NODE_CLASS_MAPPINGS = {
     "PQTMixOralVideoMergeNode": PQTMixOralVideoMergeNode,
+    "PQTMixOralVideoMergeSaveNode": PQTMixOralVideoMergeSaveNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PQTMixOralVideoMergeNode": "PQT Mix Oral Video Merge",
+    "PQTMixOralVideoMergeSaveNode": "PQT Mix Oral Video Merge Save",
 }
