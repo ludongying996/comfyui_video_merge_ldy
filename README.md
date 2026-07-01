@@ -1,22 +1,31 @@
 # ComfyUI Video Merge
 
 This directory is a standalone ComfyUI custom node project for the PingQutong
-`mix_oral` video merge flow. It ports the core FFmpeg logic from the current
-backend into Python so it can run on a RunningHub ComfyUI server.
+video merge flow. It now mirrors the current backend logic in
+`backend/src/services/cron/handlers/videoMergeHandler.ts` and
+`backend/src/services/cron/api/ffmpegService.ts`, so it can run on a RunningHub
+ComfyUI server with behavior close to the production backend.
 
 ## What It Does
 
+- Supports both `mix` and `mix_oral`
 - Downloads or reads local material videos
-- Downloads or reads a lip-sync video
-- Adjusts lip-sync duration to the total storyboard duration
-- Concatenates source materials into one material timeline
-- Renders storyboard segments with these edit types:
-  - `a满屏`
-  - `b满屏`
-  - `ab上下分屏`
-  - `b右下画中画`
-- Concatenates prepared segments
-- Adds back the lip-sync audio
+- Downloads or reads a lip-sync video for `mix_oral`
+- Downloads or reads an oral audio file for `mix`
+- Calculates total storyboard duration from `time_period`
+- Normalizes all material videos to a unified output resolution, fps, SAR, and pixel format before concat
+- Builds a material timeline first, then renders storyboard segments one by one
+- Applies the current backend segment rules:
+  - `mix`: all edit types are normalized to `a满屏`
+  - `mix_oral`: supports `a满屏`, `b满屏`, `ab上下分屏`, `b右下画中画`
+- Uses the current split-screen behavior:
+  - `a` top half fills and center-crops
+  - `b` bottom half keeps full content with proportional scaling and padding
+- Uses the current circular picture-in-picture behavior:
+  - circular lip video
+  - white outer border
+  - right-bottom overlay
+- Concatenates prepared segments with audio using the same overall backend strategy
 - Writes the final MP4 into the ComfyUI output directory
 - Exports the final result as ComfyUI `IMAGE` frames and `AUDIO`
 
@@ -53,24 +62,35 @@ ffprobe
 The custom nodes will appear as:
 
 ```text
+PingQutong/Video -> PQT Video Merge
+PingQutong/Video -> PQT Video Merge Save
 PingQutong/Video -> PQT Mix Oral Video Merge
 PingQutong/Video -> PQT Mix Oral Video Merge Save
 ```
 
 ## Main Inputs
 
-- `material_sources`: one material path or URL per line, or a JSON array
-- `lip_video_source`: local path or URL
-- `storyboard_json`: storyboard JSON array
-- `aspect_ratio`: `16:9`, `9:16`, `1:1`, or `custom`
-- `output_width` / `output_height`: used only when `aspect_ratio=custom`
-- `ffmpeg_threads`: `0` means auto
-- `segment_preset`, `concat_preset`, `adjust_preset`: FFmpeg presets
-- `task_id`: output naming helper
-- `output_filename`: final MP4 name
-- `keep_temp`: keep session files for debugging
-- `output_dir` (optional): override ComfyUI output directory
-- `tmp_dir` (optional): override temp working directory
+- `PQT Video Merge` / `PQT Video Merge Save`
+  - `video_type`: `mix_oral` or `mix`
+  - `material_sources`: one material path or URL per line, or a JSON array
+  - `lip_video_source`: local path or URL, required for `mix_oral`
+  - `oral_audio_source`: local path or URL, required for `mix`
+  - `storyboard_json`: storyboard JSON array, or a JSON object containing `storyboard_list`
+  - `aspect_ratio`: `16:9`, `9:16`, `1:1`, or `custom`
+  - `output_width` / `output_height`: used only when `aspect_ratio=custom`
+  - `ffmpeg_threads`: defaults to `2`
+  - `segment_preset` / `segment_crf`: used for segment rendering
+  - `standardize_preset` / `standardize_crf`: used for material normalization before concat
+  - `adjust_preset` / `adjust_crf`: used for duration adjustment outputs
+  - `final_preset` / `final_crf`: used for final concat with audio
+  - `task_id`: output naming helper
+  - `output_filename`: final MP4 name
+  - `keep_temp`: keep session files for debugging
+  - `output_dir` (optional): override ComfyUI output directory
+  - `tmp_dir` (optional): override temp working directory
+- `PQT Mix Oral Video Merge` / `PQT Mix Oral Video Merge Save`
+  - Backward-compatible wrapper nodes for `mix_oral`
+  - Keep the original simplified input style, but internally use the new backend-aligned pipeline
 
 ## Storyboard JSON Example
 
@@ -95,6 +115,23 @@ PingQutong/Video -> PQT Mix Oral Video Merge Save
 ]
 ```
 
+Or backend-style object:
+
+```json
+{
+  "storyboard_list": [
+    {
+      "time_period": "0-5s",
+      "edit_plan_convert": "ab上下分屏"
+    },
+    {
+      "time_period": "5-10s",
+      "edit_plan_convert": "b右下画中画"
+    }
+  ]
+}
+```
+
 ## Material Sources Example
 
 Multiline string:
@@ -117,7 +154,7 @@ Or JSON array:
 
 ## Output
 
-### `PQT Mix Oral Video Merge`
+### `PQT Video Merge`
 
 The node returns:
 
@@ -127,7 +164,7 @@ The node returns:
 - `video_path`: final MP4 path for debugging or direct file use
 - `summary_json`: JSON summary with resolution, segment count, elapsed time, and task metadata
 
-### `PQT Mix Oral Video Merge Save`
+### `PQT Video Merge Save`
 
 This node does not export frames or audio tensors. It directly saves the rendered MP4
 into the output directory and returns:
@@ -137,7 +174,7 @@ into the output directory and returns:
 
 ## Connect To Video Combine
 
-`PQT Mix Oral Video Merge` is designed to feed a downstream `Video Combine` node:
+`PQT Video Merge` is designed to feed a downstream `Video Combine` node:
 
 - connect `images` -> `Video Combine.images`
 - connect `audio` -> `Video Combine.audio`
@@ -145,14 +182,13 @@ into the output directory and returns:
 
 The node still saves the rendered MP4 so you can inspect the intermediate result if needed.
 
-If you do not want to go through `Video Combine`, use `PQT Mix Oral Video Merge Save`
+If you do not want to go through `Video Combine`, use `PQT Video Merge Save`
 instead.
 
 ## Notes
 
-- This version focuses on the current PingQutong `mix_oral` merge path.
+- This version mirrors the current PingQutong backend merge logic for both `mix` and `mix_oral`.
 - It does not include COS upload. RunningHub can pick up the output MP4 directly.
-- Fast full-screen extraction and fast segment concat both include safe fallback logic.
 - The ComfyUI-facing output is produced by decoding the rendered MP4 into frame tensors plus WAV audio.
 - If you want this project to be driven directly by your backend, the next step is to
   build a RunningHub workflow JSON that passes the same URLs and storyboard JSON into this node.
